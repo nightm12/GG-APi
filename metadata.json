@@ -1,0 +1,5 @@
+{
+  "name": "GG Build Executor",
+  "description": "Railway-hosted GG build worker and control panel",
+  "requestFramePermissions": []
+}

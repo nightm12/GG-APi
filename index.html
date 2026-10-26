@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#f7f7f8" />
+    <title>GG Build Executor</title>
+    <link rel="icon" href="./favicon.ico" />
+    <script>
+      (() => {
+        const storageKey = "gogcli_build_executor_theme";
+        let mode = "system";
+        try {
+          const saved = localStorage.getItem(storageKey);
+          if (saved === "light" || saved === "dark") mode = saved;
+        } catch {}
+        const dark = mode === "dark" || (mode === "system" && matchMedia("(prefers-color-scheme: dark)").matches);
+        document.documentElement.dataset.theme = dark ? "dark" : "light";
+        document.documentElement.dataset.themeMode = mode;
+        document.querySelector('meta[name="theme-color"]').content = dark ? "#101012" : "#f7f7f8";
+      })();
+    </script>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="app-header">
+      <div class="app-header-inner">
+        <div class="brand-lockup">
+          <div class="brand-copy">
+            <strong><span class="brand-name-line">GG公益站-</span><span class="brand-name-line">云build</span></strong>
+          </div>
+        </div>
+        <div class="header-actions">
+          <div class="theme-segmented" role="group" aria-label="主题">
+            <button type="button" data-theme-option="system" aria-label="跟随系统" title="跟随系统" aria-pressed="true"><i data-lucide="monitor"></i></button>
+            <button type="button" data-theme-option="light" aria-label="浅色主题" title="浅色主题" aria-pressed="false"><i data-lucide="sun"></i></button>
+            <button type="button" data-theme-option="dark" aria-label="深色主题" title="深色主题" aria-pressed="false"><i data-lucide="moon"></i></button>
+          </div>
+          <div id="connection-status" class="connection-status" data-state="offline" role="status" aria-live="polite" title="未连接">
+            <span class="status-indicator" aria-hidden="true"></span>
+            <span id="connection-status-text">未连接</span>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="app-main">
+      <section class="panel connection-panel" aria-label="连接设置">
+        <form id="connection-form" autocomplete="off">
+          <label class="key-field" for="user-api-key">
+            <span>公益站 API Key</span>
+            <span class="key-input-wrap">
+              <input
+                id="user-api-key"
+                name="user-api-key"
+                type="password"
+                inputmode="text"
+                spellcheck="false"
+                autocapitalize="off"
+                autocomplete="off"
+                required
+              />
+              <button id="toggle-key" class="input-action" type="button" aria-label="显示 API Key">显示</button>
+            </span>
+          </label>
+
+          <div class="connection-actions">
+            <button id="connect-button" class="primary-button" type="submit">启动 / 恢复后台</button>
+            <button id="disconnect-button" class="outline-button" type="button" disabled>暂停后台</button>
+            <button id="stop-button" class="outline-button" type="button" disabled>停止并清除 Key</button>
+          </div>
+
+          <div class="connection-options">
+            <label class="toggle-control">
+              <input id="remember-key" type="checkbox" />
+              <span class="toggle-track" aria-hidden="true"></span>
+              <span>记住此浏览器的 Key</span>
+            </label>
+            <span class="connection-hint">后台 Key 保存在 Railway；关闭网页不会停止执行。</span>
+          </div>
+        </form>
+
+        <div id="connection-message" class="connection-message" aria-live="polite"></div>
+      </section>
+
+      <section class="metrics-grid" aria-label="运行统计">
+        <div class="metric-card metric-active">
+          <span class="metric-label">活动请求</span>
+          <strong id="active-count" class="metric-value">0</strong>
+        </div>
+        <div class="metric-card metric-success">
+          <span class="metric-label">已完成</span>
+          <strong id="success-count" class="metric-value">0</strong>
+        </div>
+        <div class="metric-card metric-failure">
+          <span class="metric-label">失败</span>
+          <strong id="failure-count" class="metric-value">0</strong>
+        </div>
+        <div class="metric-card metric-duration">
+          <span class="metric-label">本次连接</span>
+          <strong id="connection-duration" class="metric-value metric-time">00:00:00</strong>
+        </div>
+      </section>
+
+      <section class="panel activity-panel" aria-labelledby="activity-heading">
+        <div class="panel-header activity-heading">
+          <h2 id="activity-heading">最近请求</h2>
+          <button id="clear-activity" class="outline-button compact-button" type="button" disabled>清空</button>
+        </div>
+
+        <div class="activity-table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>时间</th>
+                <th>模型</th>
+                <th>方式</th>
+                <th>结果</th>
+                <th class="numeric">Token</th>
+                <th class="numeric">耗时</th>
+              </tr>
+            </thead>
+            <tbody id="activity-body">
+              <tr class="empty-row">
+                <td colspan="6">暂无请求</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <dialog id="activity-error-dialog" class="error-dialog" aria-labelledby="activity-error-title">
+      <div class="error-dialog-header">
+        <h2 id="activity-error-title">错误详情</h2>
+        <form method="dialog">
+          <button class="error-dialog-close" type="submit" aria-label="关闭错误详情" title="关闭" autofocus>
+            <i data-lucide="x"></i>
+          </button>
+        </form>
+      </div>
+      <div class="error-dialog-content">
+        <dl id="activity-error-metadata" class="activity-error-metadata"></dl>
+        <section id="activity-error-response" hidden>
+          <h3 class="activity-error-body-label">原始响应</h3>
+          <pre id="activity-error-body" class="activity-error-body"></pre>
+        </section>
+      </div>
+    </dialog>
+
+    <div class="toast-region" aria-live="assertive" aria-atomic="true">
+      <div id="prefill-unsupported-toast" class="toast toast-warning" role="alert" hidden>
+        <span class="toast-icon" aria-hidden="true"><i data-lucide="triangle-alert"></i></span>
+        <div class="toast-content">
+          <strong>gemini-3.7-flash 不支持预填充</strong>
+          <p>
+            必须更换无预填充的预设，推荐
+            <a
+              href="https://discord.com/channels/1134557553011998840/1479480439478419649/1479480439478419649"
+              target="_blank"
+              rel="noopener noreferrer"
+            >kemini</a>。
+          </p>
+          <p>如果你不想换预设，直接关闭现有预设的预填充不能保证效果，最好问问预设作者。</p>
+        </div>
+        <button id="dismiss-prefill-toast" class="toast-close" type="button" aria-label="关闭提示" title="关闭提示">
+          <i data-lucide="x"></i>
+        </button>
+      </div>
+    </div>
+
+    <section id="login-panel" class="login-panel" hidden aria-labelledby="login-title" role="dialog" aria-modal="true">
+      <form id="login-form" class="login-card" autocomplete="off">
+        <h2 id="login-title">登录 GG 云 Build</h2>
+        <label for="dashboard-password">Railway 管理密码</label>
+        <input id="dashboard-password" type="password" autocomplete="current-password" required />
+        <button class="primary-button" type="submit">登录</button>
+        <p id="login-message" role="status" aria-live="polite"></p>
+      </form>
+    </section>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
